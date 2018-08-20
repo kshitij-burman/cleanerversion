@@ -583,11 +583,11 @@ class VersionNavigationAsOfTest(TestCase):
 
 
 class HistoricObjectsHandling(TestCase):
-    t0 = datetime.datetime(1980, 1, 1, tzinfo=utc)
-    t1 = datetime.datetime(1984, 4, 23, tzinfo=utc)
-    t2 = datetime.datetime(1985, 4, 23, tzinfo=utc)
-    in_between_t1_and_t2 = datetime.datetime(1984, 5, 30, tzinfo=utc)
-    after_t2 = datetime.datetime(1990, 1, 18, tzinfo=utc)
+    t0 = datetime.datetime(1980, 1, 1)
+    t1 = datetime.datetime(1984, 4, 23)
+    t2 = datetime.datetime(1985, 4, 23)
+    in_between_t1_and_t2 = datetime.datetime(1984, 5, 30)
+    after_t2 = datetime.datetime(1990, 1, 18)
 
     def test_create_using_manager(self):
         b = B.objects._create_at(self.t1, name='someB')
@@ -2055,7 +2055,7 @@ class ManyToManyFilteringTest(TestCase):
 class HistoricM2MOperationsTests(TestCase):
     def setUp(self):
         # Set up a situation on 23.4.1984
-        ts = datetime.datetime(1984, 4, 23, tzinfo=utc)
+        ts = datetime.datetime(1984, 4, 23)
         big_brother = Observer.objects._create_at(ts, name='BigBrother')
         self.big_brother = big_brother
         subject = Subject.objects._create_at(ts, name='Winston Smith')
@@ -2066,7 +2066,7 @@ class HistoricM2MOperationsTests(TestCase):
         big_brother.subjects.remove_at(ts_a_month_later, subject)
 
     def test_observer_subject_relationship_is_active_in_early_1984(self):
-        ts = datetime.datetime(1984, 5, 1, tzinfo=utc)
+        ts = datetime.datetime(1984, 5, 1)
         observer = Observer.objects.as_of(ts).get()
         self.assertEqual(observer.name, 'BigBrother')
         subjects = observer.subjects.all()
@@ -2074,7 +2074,7 @@ class HistoricM2MOperationsTests(TestCase):
         self.assertEqual(subjects[0].name, 'Winston Smith')
 
     def test_observer_subject_relationship_is_inactive_in_late_1984(self):
-        ts = datetime.datetime(1984, 8, 16, tzinfo=utc)
+        ts = datetime.datetime(1984, 8, 16)
         observer = Observer.objects.as_of(ts).get()
         self.assertEqual(observer.name, 'BigBrother')
         subjects = observer.subjects.all()

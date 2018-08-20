@@ -36,7 +36,7 @@ from versions.util import get_utc_now
 
 
 def get_utc_now():
-    return datetime.datetime.utcnow().replace(tzinfo=utc)
+    return datetime.datetime.utcnow().replace()
 
 
 def validate_uuid(uuid_obj):
@@ -223,7 +223,7 @@ class VersionManager(models.Manager):
         elif relations_as_of == 'start':
             version.as_of = version.version_start_date
         elif isinstance(relations_as_of, datetime.datetime):
-            as_of = relations_as_of.astimezone(utc)
+            as_of = relations_as_of
             if not as_of >= version.version_start_date:
                 raise ValueError(
                     "Provided as_of '{}' is earlier than version's start "
