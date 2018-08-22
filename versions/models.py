@@ -186,39 +186,39 @@ class VersionManager(models.Manager):
 
         return self.adjust_version_as_of(current, relations_as_of)
 
-        def current_version(self, object, relations_as_of=None, check_db=False):
-            """
-            Return the current version of the given object.
+    def current_version(self, object, relations_as_of=None, check_db=False):
+        """
+        Return the current version of the given object.
 
-            The current version is the one having its version_end_date set to NULL.
-            If there is not such a version then it means the object has been
-            'deleted' and so there is no current version available. In this case
-            the function returns None.
+        The current version is the one having its version_end_date set to NULL.
+        If there is not such a version then it means the object has been
+        'deleted' and so there is no current version available. In this case
+        the function returns None.
 
-            Note that if check_db is False and object's version_end_date is None,
-            this does not check the database to see if there is a newer version
-            (perhaps created by some other code), it simply returns the passed
-            object.
+        Note that if check_db is False and object's version_end_date is None,
+        this does not check the database to see if there is a newer version
+        (perhaps created by some other code), it simply returns the passed
+        object.
 
-            ``relations_as_of`` is used to fix the point in time for the version;
-            this affects which related objects are returned when querying for
-            object relations. See ``VersionManager.version_as_of`` for details on
-            valid ``relations_as_of`` values.
+        ``relations_as_of`` is used to fix the point in time for the version;
+        this affects which related objects are returned when querying for
+        object relations. See ``VersionManager.version_as_of`` for details on
+        valid ``relations_as_of`` values.
 
-            :param Versionable object: object whose current version will be
-                returned.
-            :param mixed relations_as_of: determines point in time used to access
-                relations. 'start'|'end'|datetime|None
-            :param bool check_db: Whether or not to look in the database for a
-                more recent version
-            :return: Versionable
-            """
-            if object.version_end_date is None and not check_db:
-                current = object
-            else:
-                current = self.current.filter(identity=object.identity).first()
+        :param Versionable object: object whose current version will be
+            returned.
+        :param mixed relations_as_of: determines point in time used to access
+            relations. 'start'|'end'|datetime|None
+        :param bool check_db: Whether or not to look in the database for a
+            more recent version
+        :return: Versionable
+        """
+        if object.version_end_date is None and not check_db:
+            current = object
+        else:
+            current = self.current.filter(identity=object.identity).first()
 
-            return self.adjust_version_as_of(current, relations_as_of)
+        return self.adjust_version_as_of(current, relations_as_of)
 
     def get_published_version_list(self, object):
         """
