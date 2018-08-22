@@ -3230,3 +3230,124 @@ class DeferredFieldsTest(TestCase):
             'Can not restore a model instance that has deferred fields',
             c1_v1.restore
         )
+
+
+class DraftTest(TestCase):
+    def setUp(self):
+        self.c1 = City.objects.create(name="Perth")
+        self.team1 = Team.objects.create(name="capeta", city=self.c1)
+        self.mr_biggs = Professor.objects.create(
+            name='Mr. Biggs',
+            address='123 Mainstreet, Somewhere',
+            phone_number='123')
+        self.s1 = Student.objects.create(name="bla")
+        self.s2 = Student.objects.create(name="blabla")
+
+    def test_simple_draft_properties(self):
+        c1_draft = self.c1.clone(is_draft=True)
+
+        # Checking if is_draft property is true in the clone
+        self.assertTrue(c1_draft.is_draft)
+        latest_published_version = City.objects.as_of().filter(is_draft=False, identity=self.c1.identity).first()
+
+        # Checking if original published version is still latest
+        self.assertEqual(self.c1, latest_published_version)
+
+        # Checking if published version has not been deleted
+        self.assertFalse(latest_published_version.version_end_date)
+
+        # Checking if draft id and identity haven't became equal
+        self.assertNotEqual(c1_draft.id, c1_draft.identity)
+
+    def test_one_to_many_rel(self):
+        c2 = self.c1.clone(is_draft=True)
+
+        # Testing one to many relationship results
+        self.assertTrue([self.team1], c2.team_set.all())
+        self.team1.delete()
+
+        # Testing the case if an objects gets deleted in the relationship
+        self.assertEqual([], list(City.objects.as_of().filter(is_draft=True, identity=c2.identity
+                                                              ).first().team_set.all()))
+    def test_many_to_one_rel(self):
+
+        city = City.objects.create(name="new york")
+        draft_city = city.clone(is_draft=True)
+        team = Team.objects.create(name="devils", city=draft_city)
+
+        # Testing many to one relationship
+        self.assertEqual(team.city, draft_city)
+        draft_team = team.clone(is_draft=True)
+
+        # Testing if relationship gets copied in draft clone
+        self.assertEqual(draft_team.city, draft_city)
+
+        # Testing if is_draft in true in draft clone object
+        self.assertEqual(draft_team.is_draft, True)
+
+        draft_city.delete()
+
+        # Testing if draft object gets deleted if the cascaded one get deleted
+        self.assertIsNone(Team.objects.as_of().filter(identity=draft_team.identity, is_draft=True).first())
+
+        # Testing if a published object gets deleted if a cascaded draft object gets deleted
+        self.assertIsNone(Team.objects.as_of().filter(identity=draft_team.identity, is_draft=False).first())
+
+    def test_many_to_many_rel(self):
+        s1_draft = self.s1.clone(is_draft=True)
+        mr_biggs_draft = self.mr_biggs.clone(is_draft=True)
+        s1_draft.professors.add(self.mr_biggs)
+        s1_draft.professors.add(mr_biggs_draft)
+
+        # Checking if draft object has the correct no of relationships
+        self.assertEqual(Student.objects.as_of().filter(
+            is_draft=True, identity=s1_draft.identity).first().professors.all().count(), 2)
+        mr_biggs_draft.delete()
+
+        # Checking if the draft object has correct no. of relationships after deleting some
+        self.assertEqual(Student.objects.as_of().filter(
+            is_draft=True, identity=s1_draft.identity).first().professors.all().count(), 1)
+        mr_biggs_draft2 = self.mr_biggs.clone(is_draft=True)
+
+        mr_biggs_draft2.students.add(s1_draft)
+        mr_biggs_draft2.students.add(self.s1)
+
+        # Checking if draft object has the correct no of relationships
+        self.assertEqual(Professor.objects.as_of().filter(
+            is_draft=True, identity=mr_biggs_draft2.identity).first().students.all().count(), 2)
+
+        s1_draft.delete()
+
+        # Checking if the draft object has correct no. of relationships after deleting some
+        self.assertEqual(Professor.objects.as_of().filter(
+            is_draft=True, identity=mr_biggs_draft2.identity).first().students.all().count(), 1)
+
+
+class PublishedVersionListGetTest(TestCase):
+    def setUp(self):
+        self.c1 = City.objects.create(name="Manchester")
+        self.team1 = Team.objects.create(name="bluefish", city=self.c1)
+
+    def test_get_published_version(self):
+        c2 = self.c1.clone()
+        c3 = c2.clone()
+        c4 = c3.clone()
+        c5 = c4.clone(is_draft=True)
+        c6 = c4.clone()
+
+        # Testing if current_published_version result matches the expected result
+        self.assertEqual(c6, City.objects.current_published_version(self.c1))
+
+    def test_get_published_version_list_test(self):
+        team2 = self.team1.clone()
+        draft_team3 = team2.clone(is_draft=True)
+        team4 = team2.clone()
+        draft_team5 = team4.clone(is_draft=True)
+        team6 = team4.clone()
+        draft7 = team6.clone(is_draft=True)
+        expected_result = [team6.version_start_date, team4.version_start_date, team2.version_start_date,
+                                   self.team1.version_start_date]
+        actual_result = Team.objects.get_published_version_list(self.team1).values_list('version_start_date', flat=True)
+
+        # Testing if the result of get_published_version_list matches the expected result                                                                                         flat=True)
+        self.assertEqual(list(actual_result), expected_result)

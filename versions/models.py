@@ -647,7 +647,7 @@ class Versionable(models.Model):
     OBJECT_IDENTIFIER_FIELD = 'identity'
     VERSIONABLE_FIELDS = [VERSION_IDENTIFIER_FIELD, OBJECT_IDENTIFIER_FIELD,
                           'version_start_date',
-                          'version_end_date', 'version_birth_date']
+                          'version_end_date', 'version_birth_date', 'is_draft']
 
     if versions_settings.VERSIONS_USE_UUIDFIELD:
         id = models.UUIDField(primary_key=True)
