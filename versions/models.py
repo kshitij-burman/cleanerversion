@@ -682,6 +682,10 @@ class Versionable(models.Model):
     is bound to an identity"""
 
     is_draft = models.BooleanField(default=False)
+    """is_draft is basically a check whether the model is published or still in
+    draft state. A draft state object which doesnot act as a normal versionable 
+    object. It doesnot come in list of versionable published objects. It can
+    never be the current object"""
 
     objects = VersionManager()
     """Make the versionable compliant with Django"""
@@ -867,10 +871,11 @@ class Versionable(models.Model):
         # id allowing us to get at all historic foreign key relationships
         if is_draft:
             later_version.id = self.uuid()
-            later_version.is_draft = True
         else:
             earlier_version.id = self.uuid()
             earlier_version.version_end_date = forced_version_date
+
+        later_version.is_draft = is_draft
 
         if not in_bulk:
             # This condition might save us a lot of database queries if we are
