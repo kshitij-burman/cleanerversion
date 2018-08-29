@@ -874,13 +874,10 @@ class Versionable(models.Model):
         # set earlier_version's ID to a new UUID so the clone (later_version)
         # can get the old one -- this allows 'head' to always have the original
         # id allowing us to get at all historic foreign key relationships
-        if is_draft:
-            later_version.id = self.uuid()
-        else:
-            later_version.id = self.uuid()
-            if not keep_prev_version:
-                earlier_version.version_end_date = forced_version_date
+        later_version.id = self.uuid()
 
+        if not is_draft and not keep_prev_version:
+            earlier_version.version_end_date = forced_version_date
 
         later_version.is_draft = is_draft
 
