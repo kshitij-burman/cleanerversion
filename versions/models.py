@@ -824,8 +824,8 @@ class Versionable(models.Model):
         (http://djangosnippets.org/snippets/1271), with the pk/id change
         suggested in the comments
 
-        :param forced_version_date: a timestamp including tzinfo; this value
-            is usually set only internally!
+        :param forced_version_date: a timestamp; this value is usually
+            set only internally!
         :param in_bulk: whether not to write this objects to the database
             already, if not necessary; this value is usually set only
             internally for performance optimization
@@ -887,7 +887,7 @@ class Versionable(models.Model):
             earlier_version.save()
             later_version.save()
         else:
-            earlier_version._not_created = True
+            earlier_version._not_updated = True
 
         # re-create ManyToMany relations
         # TODO: To overwrite clone_relations in order to work out id join
