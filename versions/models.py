@@ -817,7 +817,7 @@ class Versionable(models.Model):
         """
         return self.clone(forced_version_date=timestamp)
 
-    def clone(self, forced_version_date=None, in_bulk=False, is_draft=False):
+    def clone(self, forced_version_date=None, in_bulk=False, is_draft=False, keep_prev_version=False):
         """
         Clones a Versionable and returns a fresh copy of the original object.
         Original source: ClonableMixin snippet
@@ -831,9 +831,14 @@ class Versionable(models.Model):
             internally for performance optimization
         :param is_draft: whether the clone is in draft state or published
             state
+        :param keep_prev_version: whether to keep previous version or to make
+            it archive
         :return: returns a fresh clone of the original object
             (with adjusted relations)
         """
+
+        # TODO: To handle cloning for reverse foreign key (One To Many relationships)
+
         if not self.pk:
             raise ValueError('Instance must be saved before it can be cloned')
 
@@ -872,8 +877,10 @@ class Versionable(models.Model):
         if is_draft:
             later_version.id = self.uuid()
         else:
-            earlier_version.id = self.uuid()
-            earlier_version.version_end_date = forced_version_date
+            later_version.id = self.uuid()
+            if not keep_prev_version:
+                earlier_version.version_end_date = forced_version_date
+
 
         later_version.is_draft = is_draft
 
@@ -886,8 +893,9 @@ class Versionable(models.Model):
             earlier_version._not_created = True
 
         # re-create ManyToMany relations
+        # TODO: To overwrite clone_relations in order to work out id join
         for field_name in self.get_all_m2m_field_names():
-            earlier_version.clone_relations(later_version, field_name,
+            later_version.clone_relations(earlier_version, field_name,
                                             forced_version_date)
 
         return later_version
