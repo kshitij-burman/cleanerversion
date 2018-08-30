@@ -817,7 +817,7 @@ class Versionable(models.Model):
         """
         return self.clone(forced_version_date=timestamp)
 
-    def clone(self, forced_version_date=None, in_bulk=False, is_draft=False, keep_prev_version=False):
+    def clone(self, forced_version_date=None, in_bulk=False, is_draft=False, keep_prev_version=False, clone_rels=False):
         """
         Clones a Versionable and returns a fresh copy of the original object.
         Original source: ClonableMixin snippet
@@ -889,9 +889,11 @@ class Versionable(models.Model):
 
         # re-create ManyToMany relations
         # TODO: To overwrite clone_relations in order to work out id join
+        keep_prev_rels = keep_prev_version or is_draft
         for field_name in self.get_all_m2m_field_names():
             later_version.clone_relations(earlier_version, field_name,
-                                            forced_version_date)
+                                            forced_version_date,
+                                          keep_prev_rels=keep_prev_rels, clone_rels=clone_rels)
 
         return later_version
 
@@ -920,7 +922,7 @@ class Versionable(models.Model):
         self.version_birth_date = self.version_start_date = timestamp
         return self
 
-    def clone_relations(self, clone, manager_field_name, forced_version_date):
+    def clone_relations(self, clone, manager_field_name, forced_version_date, keep_prev_rels=False, clone_rels=True):
         # Source: the original object, where relations are currently
         # pointing to
         source = getattr(self,
@@ -931,43 +933,43 @@ class Versionable(models.Model):
         for item in source.all():
             destination.add(item)
 
-        # retrieve all current m2m relations pointing the newly created clone
+        # retrieve all current m2m relations pointing the earlier version
         # filter for source_id
         m2m_rels = list(source.through.objects.filter(
             **{source.source_field.attname: clone.id}))
         later_current = []
-        later_non_current = []
+        later_current_end = []
         for rel in m2m_rels:
-            # Only clone the relationship, if it is the current one; Simply
-            # adjust the older ones to point the old entry.
+            # Only clone the relationship, if it is the current one
             # Otherwise, the number of pointers pointing an entry will grow
             # exponentially
             if rel.is_current:
-                later_current.append(
-                    rel.clone(forced_version_date=self.version_end_date,
-                              in_bulk=True))
-                # On rel, which is no more 'current', set the source ID to
-                # self.id
-                setattr(rel, source.source_field_name, self)
-            else:
-                later_non_current.append(rel)
-        # Perform the bulk changes rel.clone() did not perform because of the
-        # in_bulk parameter.
+                if clone_rels:
+                    later_current.append(
+                        rel.clone(forced_version_date=clone.version_end_date,
+                                  in_bulk=True, keep_prev_version=keep_prev_rels))
+                else:
+                    later_current_end.append(rel)
+        # Perform the bulk changes rel.clone() did not perform because of the in_bulk
         # This saves a huge bunch of SQL queries:
-        # - update current version entries
-        source.through.objects.filter(
-            id__in=[l.id for l in later_current]).update(
-            **{'version_start_date': forced_version_date})
-        # - update entries that have been pointing the current object, but
-        #   have never been 'current'
-        source.through.objects.filter(
-            id__in=[l.id for l in later_non_current]).update(
-            **{source.source_field_name: self})
-        # - create entries that were 'current', but which have been relieved
-        #   in this method run
-        source.through.objects.bulk_create(
-            [r for r in m2m_rels
-             if hasattr(r, '_not_created') and r._not_created])
+        # setting new source_field_names in the clones
+        if clone_rels:
+            [setattr(l, source.source_field_name, self) for l in later_current]
+            source.through.objects.bulk_create(later_current)
+
+        # Deleting previous rows
+        if not keep_prev_rels:
+            if clone_rels:
+                source.through.objects.filter(
+                   id__in=[r.id for r in m2m_rels
+                     if hasattr(r, '_not_updated') and r._not_updated ]).update(
+                    **{'version_end_date': forced_version_date}
+                )
+            else:
+                source.through.objects.filter(
+                    id__in=[r.id for r in later_current_end]).update(
+                    **{'version_end_date': forced_version_date}
+                )
 
     def restore(self, **kwargs):
         """
