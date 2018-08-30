@@ -829,10 +829,9 @@ class Versionable(models.Model):
         :param in_bulk: whether not to write this objects to the database
             already, if not necessary; this value is usually set only
             internally for performance optimization
-        :param is_draft: whether the clone is in draft state or published
-            state
+        :param is_draft: whether the clone is in draft state or not
         :param keep_prev_version: whether to keep previous version or to make
-            it archive
+            it archived
         :return: returns a fresh clone of the original object
             (with adjusted relations)
         """
@@ -871,12 +870,11 @@ class Versionable(models.Model):
         later_version.version_end_date = None
         later_version.version_start_date = forced_version_date
 
-        # set earlier_version's ID to a new UUID so the clone (later_version)
-        # can get the old one -- this allows 'head' to always have the original
-        # id allowing us to get at all historic foreign key relationships
+        # set later_version's ID to a new UUID
         later_version.id = self.uuid()
 
         if not is_draft and not keep_prev_version:
+            # archiving the earlier version
             earlier_version.version_end_date = forced_version_date
 
         later_version.is_draft = is_draft
