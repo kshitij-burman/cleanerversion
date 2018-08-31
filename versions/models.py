@@ -416,27 +416,28 @@ class VersionedQuery(Query):
 
     def get_compiler(self, *args, **kwargs):
         """
+        FIXED: Disabled the querytime addition
         Add the query time restriction limit at the last moment.  Applying it
         earlier (e.g. by adding a filter to the queryset) does not allow the
         caching of related object to work (they are attached to a queryset;
         filter() returns a new queryset).
         """
-        if self.querytime.active and \
-                (not hasattr(self, '_querytime_filter_added') or
-                    not self._querytime_filter_added):
-            time = self.querytime.time
-            if time is None:
-                self.add_q(Q(version_end_date__isnull=True))
-            else:
-                self.add_q(
-                    (Q(version_end_date__gt=time) |
-                     Q(version_end_date__isnull=True)) &
-                    Q(version_start_date__lte=time)
-                )
-            # Ensure applying these filters happens only a single time (even
-            # if it doesn't falsify the query, it's just not very comfortable
-            # to read)
-            self._querytime_filter_added = True
+        # if self.querytime.active and \
+        #         (not hasattr(self, '_querytime_filter_added') or
+        #             not self._querytime_filter_added):
+        #     time = self.querytime.time
+        #     if time is None:
+        #         self.add_q(Q(version_end_date__isnull=True))
+        #     else:
+        #         self.add_q(
+        #             (Q(version_end_date__gt=time) |
+        #              Q(version_end_date__isnull=True)) &
+        #             Q(version_start_date__lte=time)
+        #         )
+        #     # Ensure applying these filters happens only a single time (even
+        #     # if it doesn't falsify the query, it's just not very comfortable
+        #     # to read)
+        #     self._querytime_filter_added = True
         return super(VersionedQuery, self).get_compiler(*args, **kwargs)
 
     def build_filter(self, filter_expr, **kwargs):
@@ -591,8 +592,7 @@ class VersionedQuerySet(QuerySet):
         else:
             if type_check:
                 raise TypeError(
-                    "This item is not a Versionable, it's a " + str(
-                        type(item)))
+                    "This item is not a Versionable, it's a " + str(type(item)))
         return item
 
     def as_of(self, qtime=None):
@@ -603,6 +603,7 @@ class VersionedQuerySet(QuerySet):
             state (where version_end_date = NULL)
         :return: A VersionedQuerySet
         """
+        # return self
         clone = self._clone()
         clone.querytime = QueryTime(time=qtime, active=True)
         return clone
@@ -681,11 +682,17 @@ class Versionable(models.Model):
     versionable has been created (independent of any version); This timestamp
     is bound to an identity"""
 
-    is_draft = models.BooleanField(default=False)
-    """is_draft is basically a check whether the model is published or still in
-    draft state. A draft state object which doesnot act as a normal versionable 
-    object. It doesnot come in list of versionable published objects. It can
-    never be the current object"""
+    STATUS_INVALID = 0
+    STATUS_DRAFT = 10
+    STATUS_PUBLISHED = 20
+    STATUS_ARCHIVED = 30
+    STATUS_CHOICES = (
+            (STATUS_INVALID, 'Invalid'),
+            (STATUS_DRAFT, 'Draft'),
+            (STATUS_PUBLISHED, 'Published'),
+            (STATUS_ARCHIVED, 'Archived'),
+    )
+    status = models.PositiveSmallIntegerField(choices=STATUS_CHOICES, default=STATUS_DRAFT)  # TODO: Add docstring
 
     objects = VersionManager()
     """Make the versionable compliant with Django"""
@@ -722,6 +729,7 @@ class Versionable(models.Model):
                         getattr(self, self.VERSION_IDENTIFIER_FIELD))
 
     def delete(self, using=None, keep_parents=False):
+        # TODO: Fix delete implementation
         using = using or router.db_for_write(self.__class__, instance=self)
         assert self._get_pk_val() is not None, \
             "{} object can't be deleted because its {} attribute is set to " \
@@ -745,6 +753,7 @@ class Versionable(models.Model):
         """
         if self.version_end_date is None:
             self.version_end_date = timestamp
+            self.status = Versionable.STATUS_ARCHIVED
             self.save(force_update=True, using=using)
         else:
             raise DeletionOfNonCurrentVersionError(
@@ -817,7 +826,7 @@ class Versionable(models.Model):
         """
         return self.clone(forced_version_date=timestamp)
 
-    def clone(self, forced_version_date=None, in_bulk=False, is_draft=False):
+    def clone(self, forced_version_date=None, in_bulk=False, clone_status=STATUS_DRAFT):
         """
         Clones a Versionable and returns a fresh copy of the original object.
         Original source: ClonableMixin snippet
@@ -843,7 +852,7 @@ class Versionable(models.Model):
 
         if forced_version_date:
             if not self.version_start_date <= forced_version_date <= \
-                    get_utc_now():
+                   get_utc_now():
                 raise ValueError(
                     'The clone date must be between the version start date '
                     'and now.')
@@ -863,19 +872,16 @@ class Versionable(models.Model):
         earlier_version = self
 
         later_version = copy.copy(earlier_version)
+        # Contrary to previous implementation we would assign a new UUID to every new versioned object
+        later_version.id = self.uuid()
         later_version.version_end_date = None
         later_version.version_start_date = forced_version_date
 
-        # set earlier_version's ID to a new UUID so the clone (later_version)
-        # can get the old one -- this allows 'head' to always have the original
-        # id allowing us to get at all historic foreign key relationships
-        if is_draft:
-            later_version.id = self.uuid()
-        else:
-            earlier_version.id = self.uuid()
-            earlier_version.version_end_date = forced_version_date
+        # We would no more be setting version_end_date for previous versions
+        # Since in our case we can multiple active versions
+        # earlier_version.version_end_date = forced_version_date
 
-        later_version.is_draft = is_draft
+        later_version.status = clone_status
 
         if not in_bulk:
             # This condition might save us a lot of database queries if we are
@@ -883,12 +889,11 @@ class Versionable(models.Model):
             earlier_version.save()
             later_version.save()
         else:
-            earlier_version._not_created = True
+            later_version._not_created = True
 
         # re-create ManyToMany relations
         for field_name in self.get_all_m2m_field_names():
-            earlier_version.clone_relations(later_version, field_name,
-                                            forced_version_date)
+            later_version.clone_relations(earlier_version, field_name, forced_version_date)
 
         return later_version
 
@@ -1089,21 +1094,3 @@ class Versionable(models.Model):
         self.version_start_date = self.version_birth_date = get_utc_now()
         self.version_end_date = None
         return self
-
-    @staticmethod
-    def matches_querytime(instance, querytime):
-        """
-        Checks whether the given instance satisfies the given QueryTime object.
-
-        :param instance: an instance of Versionable
-        :param querytime: QueryTime value to check against
-        """
-        if not querytime.active:
-            return True
-
-        if not querytime.time:
-            return instance.version_end_date is None
-
-        return (instance.version_start_date <= querytime.time and
-                (instance.version_end_date is None or
-                 instance.version_end_date > querytime.time))
