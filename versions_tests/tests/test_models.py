@@ -38,7 +38,8 @@ from versions_tests.models import (
     Award, B, C1, C2, C3, City, Classroom, Directory, Fan, Mascot, NonFan,
     Observer, Person, Player, Professor, Pupil,
     RabidFan, Student, Subject, Teacher, Team, Wine, WineDrinker,
-    WineDrinkerHat, WizardFan
+    WineDrinkerHat, WizardFan, Scholar, Assesment, ScholarAssesment,
+    Patient, Record
 )
 
 
@@ -3101,7 +3102,7 @@ class DetachTest(TestCase):
         c1_identity = c1.identity
         c2 = c1.detach()
         c2.save()
-        c1 = City.objects.current.get(pk=c1_identity)
+        c1 = City.objects.current.get(pk=c1.id)
         self.assertEqual(c1.name, c2.name)
         self.assertEqual(c2.id, c2.identity)
         self.assertNotEqual(c1.id, c2.id)
@@ -3351,3 +3352,71 @@ class PublishedVersionListGetTest(TestCase):
 
         # Testing if the result of get_published_version_list matches the expected result                                                                                         flat=True)
         self.assertEqual(list(actual_result), expected_result)
+
+class CloneM2MThroughRelTest(TestCase):
+    def setUp(self):
+        self.s1 = Scholar.objects.create(name="Adam")
+        self.s2 = Scholar.objects.create(name="Hughes")
+        self.a1 = Assesment.objects.create(name="spanish")
+        self.a2 = Assesment.objects.create(name="english")
+
+    def test_m2m_rel(self):
+        as1 = ScholarAssesment.objects.create(teacher="holmes", scholar=self.s1, assesment=self.a1)
+        as2 = ScholarAssesment.objects.create(teacher="putin", scholar=self.s1, assesment=self.a2)
+        s12 = self.s1.clone(clone_rels=True)
+
+        self.assertEqual([self.s1.version_end_date, self.s1.identity, self.s1.name, self.s1.version_birth_date],
+                         [s12.version_start_date, s12.identity, s12.name, s12.version_birth_date])
+
+        current_inter_relations_s1 = ScholarAssesment.objects.filter(scholar=self.s1, version_end_date__isnull=True)
+
+        self.assertEqual(current_inter_relations_s1.count(), 0)
+
+        old_inter_relations_s1 = ScholarAssesment.objects.filter(scholar=self.s1)
+        inter_rels_s12 = ScholarAssesment.objects.filter(scholar=s12, version_end_date=None)
+
+        self.assertEqual(old_inter_relations_s1.count(), inter_rels_s12.count())
+
+        self.assertEqual(set(old_inter_relations_s1.values_list('identity', 'teacher', 'assesment')),
+                         set(inter_rels_s12.values_list('identity', 'teacher', 'assesment')))
+
+        s13 = s12.clone()
+
+        current_inter_relations_s12 = ScholarAssesment.objects.filter(scholar=s12, version_end_date__isnull=True)
+
+        self.assertEqual(current_inter_relations_s12.count(), 0)
+
+        inter_relations_s12 = ScholarAssesment.objects.filter(scholar=s12, version_end_date=s13.version_start_date)
+
+        self.assertEqual(inter_relations_s12.count(), 2)
+
+        inter_relations_s13 = ScholarAssesment.objects.filter(scholar=s13)
+
+        self.assertLessEqual(inter_relations_s13.count(), 0)
+
+    def test_reverse_m2m_rel(self):
+        a3 = Assesment.objects.create(name="maths")
+        s3 = Scholar.objects.create(name="Mcmurphy")
+
+        ScholarAssesment.objects.create(scholar=s3, assesment=a3, teacher="melvin")
+        ScholarAssesment.objects.create(scholar=self.s2, assesment=a3, teacher="louis")
+
+        a32 = a3.clone(clone_rels=True)
+
+        self.assertEqual(ScholarAssesment.objects.filter(assesment=a3, version_end_date__isnull=True).count(), 0)
+
+        self.assertEqual(set(ScholarAssesment.objects.filter(
+            assesment=a32, version_end_date__isnull=True).values_list(
+            'identity', 'version_birth_date', 'teacher', 'scholar'
+        )), set(ScholarAssesment.objects.filter(assesment=a3, version_end_date=a32.version_start_date).values_list(
+            'identity', 'version_birth_date', 'teacher', 'scholar'
+        )))
+
+        self.assertEqual(ScholarAssesment.objects.filter(assesment=a32, version_end_date__isnull=True).count(),
+                         ScholarAssesment.objects.filter(assesment=a3, version_end_date=a32.version_start_date).count())
+
+        a33 = a32.clone()
+
+        self.assertEqual(ScholarAssesment.objects.filter(assesment=a32, version_end_date__isnull=True).count(),0)
+
+        self.assertEqual(ScholarAssesment.objects.filter(assesment=a33).count(), 0)
