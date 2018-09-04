@@ -954,7 +954,7 @@ class Versionable(models.Model):
         # This saves a huge bunch of SQL queries:
         # setting new source_field_names in the clones
         if clone_rels:
-            [setattr(l, source.source_field_name, self) for l in later_current]
+            [setattr(rel, source.source_field_name, self) for rel in later_current]
             source.through.objects.bulk_create(later_current)
 
         # Deleting previous rows

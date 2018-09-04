@@ -3403,7 +3403,7 @@ class CloneM2MThroughRelTest(TestCase):
         current_inter_relations_s1 = ScholarAssesment.objects.filter(scholar=self.s1, version_end_date__isnull=True)
 
         # Testing if the intermediate relations of historic objects have expired or not
-        self.assertEqual(current_inter_relations_s1.count(), 0)
+        self.assertFalse(current_inter_relations_s1.exists())
 
         old_inter_relations_s1 = ScholarAssesment.objects.filter(scholar=self.s1)
         inter_rels_s12 = ScholarAssesment.objects.filter(scholar=s12, version_end_date=None)
@@ -3430,7 +3430,7 @@ class CloneM2MThroughRelTest(TestCase):
         inter_relations_s13 = ScholarAssesment.objects.filter(scholar=s13)
 
         # Testing that the new version doesnot create any through relations as clone_rels=False
-        self.assertEqual(inter_relations_s13.count(), 0)
+        self.assertFalse(inter_relations_s13.exists())
 
     def test_reverse_m2m_rel(self):
         a3 = Assesment.objects.create(name="maths")
@@ -3442,7 +3442,7 @@ class CloneM2MThroughRelTest(TestCase):
         a32 = a3.clone(clone_rels=True)
 
         # Testing that the previous through table relations have expired
-        self.assertEqual(ScholarAssesment.objects.filter(assesment=a3, version_end_date__isnull=True).count(), 0)
+        self.assertFalse(ScholarAssesment.objects.filter(assesment=a3, version_end_date__isnull=True).exists())
 
         # Testing whether the new through table relations are properly cloned
         self.assertEqual(set(ScholarAssesment.objects.filter(
@@ -3459,10 +3459,10 @@ class CloneM2MThroughRelTest(TestCase):
         a33 = a32.clone()
 
         # Testing whether through table relations of prev obj has expired
-        self.assertEqual(ScholarAssesment.objects.filter(assesment=a32, version_end_date__isnull=True).count(),0)
+        self.assertFalse(ScholarAssesment.objects.filter(assesment=a32, version_end_date__isnull=True).exists())
 
         # Testing whether new object has created any through table relations as clone_rels=False
-        self.assertEqual(ScholarAssesment.objects.filter(assesment=a33).count(), 0)
+        self.assertFalse(ScholarAssesment.objects.filter(assesment=a33).exists())
 
     def test_m2m_rels_self(self):
         p1 = Patient.objects.create(is_doctor=False)
