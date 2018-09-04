@@ -188,6 +188,10 @@ class VersionedManyToManyField(ManyToManyField):
         # invoked by create_many_to_many_intermediary_model at
         #   django.db.models.fields.related:1048
 
+
+        # FIXME: We can remove VFK from through table since all relation are
+        #           done using pk and we are removing dependency on querytime
+
         def set_managed(model, related, through):
             through._meta.managed = model._meta.managed or \
                                     related._meta.managed

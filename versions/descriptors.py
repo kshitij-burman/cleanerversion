@@ -77,8 +77,8 @@ class VersionedForwardManyToOneDescriptor(ForwardManyToOneDescriptor):
         # CleanerVersion change 2: make rel_obj_attr return a tuple with
         # the object's identity.
         # rel_obj_attr = self.field.get_foreign_related_value
-        def versioned_fk_rel_obj_attr(versioned_rel_obj):
-            return versioned_rel_obj.identity,
+        # def versioned_fk_rel_obj_attr(versioned_rel_obj):
+        #     return versioned_rel_obj.identity,
 
         rel_obj_attr = self.field.get_foreign_related_value
         instance_attr = self.field.get_local_related_value
@@ -157,8 +157,7 @@ class VersionedForwardManyToOneDescriptor(ForwardManyToOneDescriptor):
                             str(type(current_elt)) +
                             ", which is not a subclass of Versionable")
 
-        return current_elt.__class__.objects.current.get(
-            identity=current_elt.identity)
+        return current_elt.__class__.objects.current.get(identity=current_elt.identity)
 
         # Removed use of querytime
         # if hasattr(instance, '_querytime'):
@@ -240,7 +239,7 @@ class VersionedReverseManyToOneDescriptor(ReverseManyToOneDescriptor):
                 instance_attr = rel_field.get_foreign_related_value
                 # Use identities instead of ids so that this will work with
                 # versioned objects.
-                instances_dict = {(inst.identity,): inst for inst in instances}
+                instances_dict = {(inst.id,): inst for inst in instances}
                 obj_ids = [inst.id for inst in instances]
                 query = {'%s__id__in' % rel_field.name: obj_ids}
                 queryset = queryset.filter(**query)
@@ -267,6 +266,7 @@ class VersionedReverseManyToOneDescriptor(ReverseManyToOneDescriptor):
                         raise TypeError(
                             "Trying to add a non-Versionable to a "
                             "VersionedForeignKey relationship")
+                    # Cloned object for m2m table need to be in published state
                     cloned_objs += (obj.clone(clone_status=Versionable.STATUS_PUBLISHED),)
                 super(VersionedRelatedManager, self).add(*cloned_objs,
                                                          **kwargs)
@@ -550,7 +550,6 @@ def create_versioned_forward_many_to_many_manager(superclass, rel,
                                       self.target_field_name, *objs)
 
                 # For consistency, also handle the symmetrical case
-                # FIXME: Throws muliple objects returned exception.
                 if self.symmetrical:
                     self._remove_items_at(timestamp, self.target_field_name,
                                           self.source_field_name, *objs)

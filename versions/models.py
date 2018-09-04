@@ -603,9 +603,9 @@ class VersionedQuerySet(QuerySet):
             state (where version_end_date = NULL)
         :return: A VersionedQuerySet
         """
-        # return self
+        # New queryset object is created with querytime object
         clone = self._clone()
-        clone.querytime = QueryTime(time=qtime, active=True)
+        clone.querytime = QueryTime(time=qtime, active=False)
         return clone
 
     def delete(self):
@@ -692,7 +692,13 @@ class Versionable(models.Model):
             (STATUS_PUBLISHED, 'Published'),
             (STATUS_ARCHIVED, 'Archived'),
     )
-    status = models.PositiveSmallIntegerField(choices=STATUS_CHOICES, default=STATUS_DRAFT)  # TODO: Add docstring
+    status = models.PositiveSmallIntegerField(choices=STATUS_CHOICES, default=STATUS_DRAFT,
+                                              help_text="Every versionable instance needs to be in some state")
+    """
+    This field represent current state of this instance. 
+    Status of an instance can be changed without having a new version.
+    For example - Version can move from draft to publish state with same version id.
+    """
 
     objects = VersionManager()
     """Make the versionable compliant with Django"""
@@ -833,6 +839,7 @@ class Versionable(models.Model):
         (http://djangosnippets.org/snippets/1271), with the pk/id change
         suggested in the comments
 
+        :param clone_status:
         :param forced_version_date: a timestamp; this value is usually
             set only internally!
         :param in_bulk: whether not to write this objects to the database
@@ -885,6 +892,9 @@ class Versionable(models.Model):
         # Since in our case we can multiple active versions
         # earlier_version.version_end_date = forced_version_date
 
+        # later_version can change status after cloning.
+        # For example - When user wants to create a draft from existing published object
+        #                   It would call clone on a published object with new status set as draft
         later_version.status = clone_status
 
         if not in_bulk:
@@ -896,7 +906,6 @@ class Versionable(models.Model):
             later_version._not_updated = True
 
         # re-create ManyToMany relations
-        # TODO: To overwrite clone_relations in order to work out id join
         for field_name in self.get_all_m2m_field_names():
             later_version.clone_relations(earlier_version, field_name, forced_version_date)
 
@@ -1022,6 +1031,7 @@ class Versionable(models.Model):
         restored = copy.copy(self)
         restored.version_end_date = None
         restored.version_start_date = now
+        restored.status = Versionable.STATUS_PUBLISHED
 
         fields = [f for f in cls._meta.local_fields if
                   f.name not in Versionable.VERSIONABLE_FIELDS]
