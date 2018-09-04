@@ -826,23 +826,27 @@ class Versionable(models.Model):
         """
         return self.clone(forced_version_date=timestamp)
 
-    def clone(self, forced_version_date=None, in_bulk=False, clone_status=STATUS_DRAFT):
+    def clone(self, forced_version_date=None, in_bulk=False, clone_status=STATUS_DRAFT, keep_prev_version=False):
         """
         Clones a Versionable and returns a fresh copy of the original object.
         Original source: ClonableMixin snippet
         (http://djangosnippets.org/snippets/1271), with the pk/id change
         suggested in the comments
 
-        :param forced_version_date: a timestamp including tzinfo; this value
-            is usually set only internally!
+        :param forced_version_date: a timestamp; this value is usually
+            set only internally!
         :param in_bulk: whether not to write this objects to the database
             already, if not necessary; this value is usually set only
             internally for performance optimization
-        :param is_draft: whether the clone is in draft state or published
-            state
+        :param is_draft: whether the clone is in draft state or not
+        :param keep_prev_version: whether to keep previous version or to make
+            it archived
         :return: returns a fresh clone of the original object
             (with adjusted relations)
         """
+
+        # TODO: To handle cloning for reverse foreign key (One To Many relationships)
+
         if not self.pk:
             raise ValueError('Instance must be saved before it can be cloned')
 
@@ -889,9 +893,10 @@ class Versionable(models.Model):
             earlier_version.save()
             later_version.save()
         else:
-            later_version._not_created = True
+            later_version._not_updated = True
 
         # re-create ManyToMany relations
+        # TODO: To overwrite clone_relations in order to work out id join
         for field_name in self.get_all_m2m_field_names():
             later_version.clone_relations(earlier_version, field_name, forced_version_date)
 
