@@ -146,18 +146,14 @@ class VersionedForwardManyToOneDescriptor(ForwardManyToOneDescriptor):
         if instance is None:
             return self
 
-        current_elt = super(self.__class__, self).__get__(instance,
-                                                          cls)
-
-        if not current_elt:
-            return None
+        current_elt = super(self.__class__, self).__get__(instance, cls)
 
         if not isinstance(current_elt, Versionable):
             raise TypeError("VersionedForeignKey target is of type " +
                             str(type(current_elt)) +
                             ", which is not a subclass of Versionable")
 
-        return current_elt.__class__.objects.current.get(identity=current_elt.identity)
+        return current_elt
 
         # Removed use of querytime
         # if hasattr(instance, '_querytime'):
@@ -182,14 +178,6 @@ class VersionedReverseManyToOneDescriptor(ReverseManyToOneDescriptor):
         rel_field = self.field
 
         class VersionedRelatedManager(manager_cls):
-            def __init__(self, instance):
-                super(VersionedRelatedManager, self).__init__(instance)
-
-                # This is a hack, in order to get the versioned related objects
-                for key in self.core_filters.keys():
-                    if '__exact' in key or '__' not in key:
-                        self.core_filters[key] = instance.identity
-
             def get_queryset(self):
                 from versions.models import VersionedQuerySet
 
@@ -223,7 +211,7 @@ class VersionedReverseManyToOneDescriptor(ReverseManyToOneDescriptor):
 
                 queryset._add_hints(instance=instances[0])
                 queryset = queryset.using(queryset._db or self._db)
-                instance_querytime = instances[0]._querytime
+                # instance_querytime = instances[0]._querytime
                 # We would not be using querytime
                 # if instance_querytime.active:
                 #     if queryset.querytime.active and \

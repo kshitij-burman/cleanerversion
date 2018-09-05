@@ -833,7 +833,7 @@ class Versionable(models.Model):
         return self.clone(forced_version_date=timestamp)
 
     def clone(self, forced_version_date=None, in_bulk=False, clone_status=STATUS_DRAFT, keep_prev_version=False,
-              clone_rels=False):
+              clone_rels=False, end_version=True):
         """
         Clones a Versionable and returns a fresh copy of the original object.
         Original source: ClonableMixin snippet
@@ -890,9 +890,11 @@ class Versionable(models.Model):
         later_version.version_end_date = None
         later_version.version_start_date = forced_version_date
 
-        # We would no more be setting version_end_date for previous versions
+
+        # We would be selectively setting version_end_date for previous versions
         # Since in our case we can multiple active versions
-        # earlier_version.version_end_date = forced_version_date
+        if end_version:
+            earlier_version.version_end_date = forced_version_date
 
         # later_version can change status after cloning.
         # For example - When user wants to create a draft from existing published object
