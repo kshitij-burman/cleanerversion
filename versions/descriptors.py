@@ -148,6 +148,9 @@ class VersionedForwardManyToOneDescriptor(ForwardManyToOneDescriptor):
 
         current_elt = super(self.__class__, self).__get__(instance, cls)
 
+        if not current_elt:
+            return None
+
         if not isinstance(current_elt, Versionable):
             raise TypeError("VersionedForeignKey target is of type " +
                             str(type(current_elt)) +
