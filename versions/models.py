@@ -833,7 +833,7 @@ class Versionable(models.Model):
         return self.clone(forced_version_date=timestamp)
 
     def clone(self, forced_version_date=None, in_bulk=False, clone_status=STATUS_DRAFT, keep_prev_version=False,
-              clone_rels=False, end_version=True):
+              clone_rels=False):
         """
         Clones a Versionable and returns a fresh copy of the original object.
         Original source: ClonableMixin snippet
@@ -863,14 +863,15 @@ class Versionable(models.Model):
             raise ValueError(
                 'This is a historical item and can not be cloned.')
 
-        if forced_version_date:
-            if not self.version_start_date <= forced_version_date <= \
-                   get_utc_now():
-                raise ValueError(
-                    'The clone date must be between the version start date '
-                    'and now.')
-        else:
-            forced_version_date = get_utc_now()
+        if not keep_prev_version:
+            if forced_version_date:
+                if not self.version_start_date <= forced_version_date <= \
+                       get_utc_now():
+                    raise ValueError(
+                        'The clone date must be between the version start date '
+                        'and now.')
+            else:
+                forced_version_date = get_utc_now()
 
         if self.get_deferred_fields():
             # It would be necessary to fetch the record from the database
@@ -893,8 +894,7 @@ class Versionable(models.Model):
 
         # We would be selectively setting version_end_date for previous versions
         # Since in our case we can multiple active versions
-        if end_version:
-            earlier_version.version_end_date = forced_version_date
+        earlier_version.version_end_date = forced_version_date
 
         # later_version can change status after cloning.
         # For example - When user wants to create a draft from existing published object
@@ -911,7 +911,7 @@ class Versionable(models.Model):
 
         # re-create ManyToMany relations
         # TODO: To overwrite clone_relations in order to work out id join
-        keep_prev_rels = keep_prev_version or clone_status == Versionable.STATUS_DRAFT
+        keep_prev_rels = keep_prev_version or clone_status == self.STATUS_DRAFT
         for field_name in self.get_all_m2m_field_names():
             later_version.clone_relations(earlier_version, field_name,
                                             forced_version_date,
