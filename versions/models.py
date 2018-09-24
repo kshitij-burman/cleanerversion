@@ -761,9 +761,9 @@ class Versionable(models.Model):
             self.version_end_date = timestamp
             self.status = Versionable.STATUS_ARCHIVED
             self.save(force_update=True, using=using)
-        else:
-            raise DeletionOfNonCurrentVersionError(
-                'Cannot delete anything else but the current version')
+        # else:
+        #     raise DeletionOfNonCurrentVersionError(
+        #         'Cannot delete anything else but the current version')
 
     @property
     def is_current(self):
@@ -815,7 +815,7 @@ class Versionable(models.Model):
                 raise ValueError(
                     "uuid_value must be a valid UUID version 4 object")
         else:
-            uuid_value = uuid.uuid4()
+            uuid_value = uuid.uuid1()
 
         if versions_settings.VERSIONS_USE_UUIDFIELD:
             return uuid_value
@@ -859,19 +859,18 @@ class Versionable(models.Model):
         if not self.pk:
             raise ValueError('Instance must be saved before it can be cloned')
 
-        if self.version_end_date:
-            raise ValueError(
-                'This is a historical item and can not be cloned.')
+        # if self.version_end_date:
+        #     raise ValueError(
+        #         'This is a historical item and can not be cloned.')
 
-        if not keep_prev_version:
-            if forced_version_date:
-                if not self.version_start_date <= forced_version_date <= \
-                       get_utc_now():
-                    raise ValueError(
-                        'The clone date must be between the version start date '
-                        'and now.')
-            else:
-                forced_version_date = get_utc_now()
+        if forced_version_date:
+            if not self.version_start_date <= forced_version_date <= \
+                   get_utc_now():
+                raise ValueError(
+                    'The clone date must be between the version start date '
+                    'and now.')
+        else:
+            forced_version_date = get_utc_now()
 
         if self.get_deferred_fields():
             # It would be necessary to fetch the record from the database
@@ -890,11 +889,14 @@ class Versionable(models.Model):
         later_version.id = self.uuid()
         later_version.version_end_date = None
         later_version.version_start_date = forced_version_date
-
+        keep_prev_rels = keep_prev_version or clone_status == self.STATUS_DRAFT
 
         # We would be selectively setting version_end_date for previous versions
         # Since in our case we can multiple active versions
-        earlier_version.version_end_date = forced_version_date
+        if not keep_prev_rels:
+            # If we don't want previous version to be active as well, then archive it.
+            earlier_version.version_end_date = forced_version_date
+            earlier_version.status = self.STATUS_ARCHIVED
 
         # later_version can change status after cloning.
         # For example - When user wants to create a draft from existing published object
@@ -911,7 +913,6 @@ class Versionable(models.Model):
 
         # re-create ManyToMany relations
         # TODO: To overwrite clone_relations in order to work out id join
-        keep_prev_rels = keep_prev_version or clone_status == self.STATUS_DRAFT
         for field_name in self.get_all_m2m_field_names():
             later_version.clone_relations(earlier_version, field_name,
                                             forced_version_date,

@@ -49,14 +49,14 @@ class VersionedCollector(Collector):
             # send pre_delete signals, but not for versionables
             for model, obj in self.instances_with_model():
                 if not model._meta.auto_created:
-                    if self.is_versionable(model):
-                        # By default, no signal is sent when deleting a
-                        # Versionable.
-                        self.versionable_pre_delete(obj, timestamp)
-                    else:
-                        signals.pre_delete.send(
-                            sender=model, instance=obj, using=self.using
-                        )
+                    # if self.is_versionable(model):
+                    #     # By default, no signal is sent when deleting a
+                    #     # Versionable.
+                    #     self.versionable_pre_delete(obj, timestamp)
+                    # else:
+                    signals.pre_delete.send(
+                        sender=model, instance=obj, using=self.using
+                    )
 
             # do not do fast deletes
             if self.fast_deletes:
@@ -80,14 +80,16 @@ class VersionedCollector(Collector):
                                     versions.fields.VersionedForeignKey) and
                                 field.remote_field.on_delete == CASCADE):
                             for instance in instances:
-                                # Clone before updating
-                                cloned = id_map.get(instance.pk, None)
-                                if not cloned:
-                                    cloned = instance.clone()
-                                id_map[instance.pk] = cloned
-                                updated_instances.add(cloned)
-                                # TODO: instance should get updated with new
-                                # values from clone ?
+                                # Create new clone only when version is currently active.
+                                if not instance.version_end_date:
+                                    # Clone before updating
+                                    cloned = id_map.get(instance.pk, None)
+                                    if not cloned:
+                                        cloned = instance.clone()
+                                    id_map[instance.pk] = cloned
+                                    updated_instances.add(cloned)
+                                    # TODO: instance should get updated with new
+                                    # values from clone ?
                         instances_for_fieldvalues[
                             (field, value)] = updated_instances
 
