@@ -859,9 +859,9 @@ class Versionable(models.Model):
         if not self.pk:
             raise ValueError('Instance must be saved before it can be cloned')
 
-        # if self.version_end_date:
-        #     raise ValueError(
-        #         'This is a historical item and can not be cloned.')
+        if self.version_end_date:
+            raise ValueError(
+                'This is a historical item and can not be cloned.')
 
         if forced_version_date:
             if not self.version_start_date <= forced_version_date <= \
@@ -962,6 +962,7 @@ class Versionable(models.Model):
             # Otherwise, the number of pointers pointing an entry will grow
             # exponentially
             if hasattr(rel, 'is_current'):
+                # Check if it is a versionable object. If it is, clone it.
                 if rel.is_current:
                     if clone_rels:
                         later_current.append(
@@ -970,6 +971,8 @@ class Versionable(models.Model):
                 else:
                     later_current_end.append(rel)
             else:
+                # If not a versionable object, just recreate the entry and replace the source field attribute with
+                # the new object cloned/created.
                 if clone_rels:
                     rel.id = None
                     later_current.append(rel)
@@ -1094,16 +1097,17 @@ class Versionable(models.Model):
     def get_all_m2m_field_names(self):
         opts = self._meta
         rel_field_names = []
-        test = set()
+        # Create a set of through tables in order to clone each object just once.
+        through_tables_set = set()
         for field in opts.many_to_many:
-            if field.remote_field.through not in test:
-                test.add(field.remote_field.through)
+            if field.remote_field.through not in through_tables_set:
+                through_tables_set.add(field.remote_field.through)
                 rel_field_names.append(field.attname)
 
-        test = set()
+        through_tables_set = set()
         for rel in opts.get_all_related_many_to_many_objects():
-            if rel.through not in test:
-                test.add(rel.through)
+            if rel.through not in through_tables_set:
+                through_tables_set.add(rel.through)
                 rel_field_names.append(rel.get_accessor_name())
 
         return rel_field_names
