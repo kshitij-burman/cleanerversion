@@ -529,22 +529,22 @@ class VersionedQuerySet(QuerySet):
         """
         self._querytime = value
         self.query.querytime = value
-
-    def __getitem__(self, k):
-        """
-        Overrides the QuerySet.__getitem__ magic method for retrieving a
-        list-item out of a query set.
-
-        :param k: Retrieve the k-th element or a range of elements
-        :return: Either one element or a list of elements
-        """
-        item = super(VersionedQuerySet, self).__getitem__(k)
-        if isinstance(item, (list,)):
-            for i in item:
-                self._set_item_querytime(i)
-        else:
-            self._set_item_querytime(item)
-        return item
+    #
+    # def __getitem__(self, k):
+    #     """
+    #     Overrides the QuerySet.__getitem__ magic method for retrieving a
+    #     list-item out of a query set.
+    #
+    #     :param k: Retrieve the k-th element or a range of elements
+    #     :return: Either one element or a list of elements
+    #     """
+    #     item = super(VersionedQuerySet, self).__getitem__(k)
+    #     if isinstance(item, (list,)):
+    #         for i in item:
+    #             self._set_item_querytime(i)
+    #     else:
+    #         self._set_item_querytime(item)
+    #     return item
 
     def _fetch_all(self):
         """
@@ -607,6 +607,24 @@ class VersionedQuerySet(QuerySet):
         clone = self._clone()
         clone.querytime = QueryTime(time=qtime, active=False)
         return clone
+
+    def first(self):
+        """
+        Returns the first object of a query, returns None if no match is found.
+        """
+        objects = list((self if self.ordered else self.order_by('version_start_date'))[:1])
+        if objects:
+            return objects[0]
+        return None
+
+    def last(self):
+        """
+        Returns the last object of a query, returns None if no match is found.
+        """
+        objects = list((self.reverse() if self.ordered else self.order_by('-version_start_date'))[:1])
+        if objects:
+            return objects[0]
+        return None
 
     def delete(self):
         """
@@ -761,9 +779,9 @@ class Versionable(models.Model):
             self.version_end_date = timestamp
             self.status = Versionable.STATUS_ARCHIVED
             self.save(force_update=True, using=using)
-        else:
-            raise DeletionOfNonCurrentVersionError(
-                'Cannot delete anything else but the current version')
+        # else:
+        #     raise DeletionOfNonCurrentVersionError(
+        #         'Cannot delete anything else but the current version')
 
     @property
     def is_current(self):
@@ -815,7 +833,7 @@ class Versionable(models.Model):
                 raise ValueError(
                     "uuid_value must be a valid UUID version 4 object")
         else:
-            uuid_value = uuid.uuid4()
+            uuid_value = uuid.uuid1()
 
         if versions_settings.VERSIONS_USE_UUIDFIELD:
             return uuid_value
@@ -863,15 +881,14 @@ class Versionable(models.Model):
             raise ValueError(
                 'This is a historical item and can not be cloned.')
 
-        if not keep_prev_version:
-            if forced_version_date:
-                if not self.version_start_date <= forced_version_date <= \
-                       get_utc_now():
-                    raise ValueError(
-                        'The clone date must be between the version start date '
-                        'and now.')
-            else:
-                forced_version_date = get_utc_now()
+        if forced_version_date:
+            if not self.version_start_date <= forced_version_date <= \
+                   get_utc_now():
+                raise ValueError(
+                    'The clone date must be between the version start date '
+                    'and now.')
+        else:
+            forced_version_date = get_utc_now()
 
         if self.get_deferred_fields():
             # It would be necessary to fetch the record from the database
@@ -890,11 +907,14 @@ class Versionable(models.Model):
         later_version.id = self.uuid()
         later_version.version_end_date = None
         later_version.version_start_date = forced_version_date
-
+        keep_prev_rels = keep_prev_version or clone_status == self.STATUS_DRAFT
 
         # We would be selectively setting version_end_date for previous versions
         # Since in our case we can multiple active versions
-        earlier_version.version_end_date = forced_version_date
+        if not keep_prev_rels:
+            # If we don't want previous version to be active as well, then archive it.
+            earlier_version.version_end_date = forced_version_date
+            earlier_version.status = self.STATUS_ARCHIVED
 
         # later_version can change status after cloning.
         # For example - When user wants to create a draft from existing published object
@@ -911,7 +931,6 @@ class Versionable(models.Model):
 
         # re-create ManyToMany relations
         # TODO: To overwrite clone_relations in order to work out id join
-        keep_prev_rels = keep_prev_version or clone_status == self.STATUS_DRAFT
         for field_name in self.get_all_m2m_field_names():
             later_version.clone_relations(earlier_version, field_name,
                                             forced_version_date,
@@ -949,11 +968,6 @@ class Versionable(models.Model):
         # pointing to
         source = getattr(self,
                          manager_field_name)
-        # returns a VersionedRelatedManager instance
-        # Destination: the clone, where the cloned relations should point to
-        destination = getattr(clone, manager_field_name)
-        for item in source.all():
-            destination.add(item)
 
         # retrieve all current m2m relations pointing the earlier version
         # filter for source_id
@@ -965,13 +979,21 @@ class Versionable(models.Model):
             # Only clone the relationship, if it is the current one
             # Otherwise, the number of pointers pointing an entry will grow
             # exponentially
-            if rel.is_current:
-                if clone_rels:
-                    later_current.append(
-                        rel.clone(forced_version_date=clone.version_end_date,
-                                  in_bulk=True, keep_prev_version=keep_prev_rels))
+            if hasattr(rel, 'is_current'):
+                # Check if it is a versionable object. If it is, clone it.
+                if rel.is_current:
+                    if clone_rels:
+                        later_current.append(
+                            rel.clone(forced_version_date=clone.version_end_date,
+                                      in_bulk=True, keep_prev_version=keep_prev_rels))
                 else:
                     later_current_end.append(rel)
+            else:
+                # If not a versionable object, just recreate the entry and replace the source field attribute with
+                # the new object cloned/created.
+                if clone_rels:
+                    rel.id = None
+                    later_current.append(rel)
         # Perform the bulk changes rel.clone() did not perform because of the in_bulk
         # This saves a huge bunch of SQL queries:
         # setting new source_field_names in the clones
@@ -1092,10 +1114,19 @@ class Versionable(models.Model):
 
     def get_all_m2m_field_names(self):
         opts = self._meta
-        rel_field_names = [field.attname for field in opts.many_to_many]
-        if hasattr(opts, 'many_to_many_related'):
-            rel_field_names += [rel.reverse for rel in
-                                opts.many_to_many_related]
+        rel_field_names = []
+        # Create a set of through tables in order to clone each object just once.
+        through_tables_set = set()
+        for field in opts.many_to_many:
+            if field.remote_field.through not in through_tables_set:
+                through_tables_set.add(field.remote_field.through)
+                rel_field_names.append(field.attname)
+
+        through_tables_set = set()
+        for rel in opts.get_all_related_many_to_many_objects():
+            if rel.through not in through_tables_set:
+                through_tables_set.add(rel.through)
+                rel_field_names.append(rel.get_accessor_name())
 
         return rel_field_names
 
