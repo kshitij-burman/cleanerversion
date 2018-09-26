@@ -950,11 +950,6 @@ class Versionable(models.Model):
         # pointing to
         source = getattr(self,
                          manager_field_name)
-        # returns a VersionedRelatedManager instance
-        # Destination: the clone, where the cloned relations should point to
-        destination = getattr(clone, manager_field_name)
-        for item in source.all():
-            destination.add(item)
 
         # retrieve all current m2m relations pointing the earlier version
         # filter for source_id
@@ -966,13 +961,18 @@ class Versionable(models.Model):
             # Only clone the relationship, if it is the current one
             # Otherwise, the number of pointers pointing an entry will grow
             # exponentially
-            if rel.is_current:
-                if clone_rels:
-                    later_current.append(
-                        rel.clone(forced_version_date=clone.version_end_date,
-                                  in_bulk=True, keep_prev_version=keep_prev_rels))
+            if hasattr(rel, 'is_current'):
+                if rel.is_current:
+                    if clone_rels:
+                        later_current.append(
+                            rel.clone(forced_version_date=clone.version_end_date,
+                                      in_bulk=True, keep_prev_version=keep_prev_rels))
                 else:
                     later_current_end.append(rel)
+            else:
+                if clone_rels:
+                    rel.id = None
+                    later_current.append(rel)
         # Perform the bulk changes rel.clone() did not perform because of the in_bulk
         # This saves a huge bunch of SQL queries:
         # setting new source_field_names in the clones
@@ -1093,10 +1093,18 @@ class Versionable(models.Model):
 
     def get_all_m2m_field_names(self):
         opts = self._meta
-        rel_field_names = [field.attname for field in opts.many_to_many]
-        if hasattr(opts, 'many_to_many_related'):
-            rel_field_names += [rel.reverse for rel in
-                                opts.many_to_many_related]
+        rel_field_names = []
+        test = set()
+        for field in opts.many_to_many:
+            if field.remote_field.through not in test:
+                test.add(field.remote_field.through)
+                rel_field_names.append(field.attname)
+
+        test = set()
+        for rel in opts.get_all_related_many_to_many_objects():
+            if rel.through not in test:
+                test.add(rel.through)
+                rel_field_names.append(rel.get_accessor_name())
 
         return rel_field_names
 
