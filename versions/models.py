@@ -529,22 +529,22 @@ class VersionedQuerySet(QuerySet):
         """
         self._querytime = value
         self.query.querytime = value
-
-    def __getitem__(self, k):
-        """
-        Overrides the QuerySet.__getitem__ magic method for retrieving a
-        list-item out of a query set.
-
-        :param k: Retrieve the k-th element or a range of elements
-        :return: Either one element or a list of elements
-        """
-        item = super(VersionedQuerySet, self).__getitem__(k)
-        if isinstance(item, (list,)):
-            for i in item:
-                self._set_item_querytime(i)
-        else:
-            self._set_item_querytime(item)
-        return item
+    #
+    # def __getitem__(self, k):
+    #     """
+    #     Overrides the QuerySet.__getitem__ magic method for retrieving a
+    #     list-item out of a query set.
+    #
+    #     :param k: Retrieve the k-th element or a range of elements
+    #     :return: Either one element or a list of elements
+    #     """
+    #     item = super(VersionedQuerySet, self).__getitem__(k)
+    #     if isinstance(item, (list,)):
+    #         for i in item:
+    #             self._set_item_querytime(i)
+    #     else:
+    #         self._set_item_querytime(item)
+    #     return item
 
     def _fetch_all(self):
         """
@@ -607,6 +607,24 @@ class VersionedQuerySet(QuerySet):
         clone = self._clone()
         clone.querytime = QueryTime(time=qtime, active=False)
         return clone
+
+    def first(self):
+        """
+        Returns the first object of a query, returns None if no match is found.
+        """
+        objects = list((self if self.ordered else self.order_by('version_start_date'))[:1])
+        if objects:
+            return objects[0]
+        return None
+
+    def last(self):
+        """
+        Returns the last object of a query, returns None if no match is found.
+        """
+        objects = list((self.reverse() if self.ordered else self.order_by('-version_start_date'))[:1])
+        if objects:
+            return objects[0]
+        return None
 
     def delete(self):
         """
