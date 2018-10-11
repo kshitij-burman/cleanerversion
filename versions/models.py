@@ -662,18 +662,15 @@ class Versionable(models.Model):
     """
     This is pretty much the central point for versioning objects.
     """
-    VERSION_IDENTIFIER_FIELD = 'id'
+    VERSION_IDENTIFIER_FIELD = 'unique_id'
     OBJECT_IDENTIFIER_FIELD = 'identity'
     VERSIONABLE_FIELDS = [VERSION_IDENTIFIER_FIELD, OBJECT_IDENTIFIER_FIELD,
                           'version_start_date',
                           'version_end_date', 'version_birth_date', 'is_draft']
 
-    if versions_settings.VERSIONS_USE_UUIDFIELD:
-        id = models.UUIDField(primary_key=True)
-        """id stands for ID and is the primary key; sometimes also referenced
-        as the surrogate key"""
-    else:
-        id = models.CharField(max_length=36, primary_key=True)
+    unique_id = models.UUIDField(unique=True, default=uuid.uuid1)
+    """id stands for ID and is the primary key; sometimes also referenced
+    as the surrogate key"""
 
     if versions_settings.VERSIONS_USE_UUIDFIELD:
         identity = models.UUIDField()
@@ -713,7 +710,7 @@ class Versionable(models.Model):
     status = models.PositiveSmallIntegerField(choices=STATUS_CHOICES, default=STATUS_DRAFT,
                                               help_text="Every versionable instance needs to be in some state")
     """
-    This field represent current state of this instance. 
+    This field represent current state of this instance.
     Status of an instance can be changed without having a new version.
     For example - Version can move from draft to publish state with same version id.
     """
@@ -728,7 +725,7 @@ class Versionable(models.Model):
 
     class Meta:
         abstract = True
-        unique_together = ('id', 'identity')
+        unique_together = ('unique_id', 'identity')
 
     def __init__(self, *args, **kwargs):
         super(Versionable, self).__init__(*args, **kwargs)
@@ -798,7 +795,7 @@ class Versionable(models.Model):
 
         :return: boolean
         """
-        return self.id == self.identity
+        return self.unique_id == self.identity
 
     @property
     def is_terminated(self):
@@ -904,7 +901,7 @@ class Versionable(models.Model):
 
         later_version = copy.copy(earlier_version)
         # Contrary to previous implementation we would assign a new UUID to every new versioned object
-        later_version.id = self.uuid()
+        later_version.unique_id = self.uuid()
         later_version.version_end_date = None
         later_version.version_start_date = forced_version_date
         keep_prev_rels = keep_prev_version or clone_status == self.STATUS_DRAFT
@@ -972,7 +969,7 @@ class Versionable(models.Model):
         # retrieve all current m2m relations pointing the earlier version
         # filter for source_id
         m2m_rels = list(source.through.objects.filter(
-            **{source.source_field.attname: clone.id}))
+            **{source.source_field.attname: clone.unique_id}))
         later_current = []
         later_current_end = []
         for rel in m2m_rels:
@@ -1088,7 +1085,7 @@ class Versionable(models.Model):
                 except ValueError:
                     raise ForeignKeyRequiresValueError
 
-        self.id = self.uuid()
+        self.unique_id = self.uuid()
 
         with transaction.atomic():
             # If this is not the latest version, terminate the latest version
@@ -1144,7 +1141,7 @@ class Versionable(models.Model):
 
         :return: Versionable
         """
-        self.id = self.identity = self.uuid()
+        self.unique_id = self.identity = self.uuid()
         self.version_start_date = self.version_birth_date = get_utc_now()
         self.version_end_date = None
         return self
