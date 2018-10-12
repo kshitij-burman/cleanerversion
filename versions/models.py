@@ -17,7 +17,7 @@ import datetime
 import uuid
 from collections import namedtuple
 
-from django.core.exceptions import SuspiciousOperation, ObjectDoesNotExist
+from django.core.exceptions import SuspiciousOperation, ObjectDoesNotExist, FieldDoesNotExist
 from django.db import models, router, transaction
 from django.db.models import Q
 from django.db.models.constants import LOOKUP_SEP
@@ -43,7 +43,7 @@ def validate_uuid(uuid_obj):
     """
     Check that the UUID object is in fact a valid version 4 uuid.
     """
-    return isinstance(uuid_obj, uuid.UUID) and uuid_obj.version == 4
+    return isinstance(uuid_obj, uuid.UUID) and uuid_obj.version == 1
 
 
 QueryTime = namedtuple('QueryTime', 'time active')
@@ -327,15 +327,15 @@ class VersionManager(models.Manager):
         :param kwargs: arguments needed for initializing the instance
         :return: an instance of the class
         """
-        id = Versionable.uuid(id)
+        unique_id = Versionable.uuid(id)
         if forced_identity:
             ident = Versionable.uuid(forced_identity)
         else:
-            ident = id
+            ident = unique_id
 
         if timestamp is None:
             timestamp = get_utc_now()
-        kwargs['id'] = id
+        kwargs['unique_id'] = unique_id
         kwargs['identity'] = ident
         kwargs['version_start_date'] = timestamp
         kwargs['version_birth_date'] = timestamp
@@ -354,20 +354,20 @@ class VersionedWhereNode(WhereNode):
         :return: A tuple consisting of (sql_string, result_params)
         """
         # self.children is an array of VersionedExtraWhere-objects
-        from versions.fields import VersionedExtraWhere
-        for child in self.children:
-            if isinstance(child, VersionedExtraWhere) and not child.params:
-                _query = qn.query
-                query_time = _query.querytime.time
-                apply_query_time = _query.querytime.active
-                alias_map = _query.alias_map
-                self._set_child_joined_alias(child, alias_map)
-                if apply_query_time:
-                    # Add query parameters that have not been added till now
-                    child.set_as_of(query_time)
-                else:
-                    # Remove the restriction if it's not required
-                    child.sqls = []
+        # from versions.fields import VersionedExtraWhere
+        # for child in self.children:
+        #     if isinstance(child, VersionedExtraWhere) and not child.params:
+        #         _query = qn.query
+        #         query_time = _query.querytime.time
+        #         apply_query_time = _query.querytime.active
+        #         alias_map = _query.alias_map
+        #         self._set_child_joined_alias(child, alias_map)
+        #         if apply_query_time:
+        #             # Add query parameters that have not been added till now
+        #             child.set_as_of(query_time)
+        #         else:
+        #             # Remove the restriction if it's not required
+        #             child.sqls = []
         return super(VersionedWhereNode, self).as_sql(qn, connection)
 
     @staticmethod
@@ -546,23 +546,23 @@ class VersionedQuerySet(QuerySet):
     #         self._set_item_querytime(item)
     #     return item
 
-    def _fetch_all(self):
-        """
-        Completely overrides the QuerySet._fetch_all method by adding the
-        timestamp to all objects
-
-        :return: See django.db.models.query.QuerySet._fetch_all for return
-            values
-        """
-        if self._result_cache is None:
-            self._result_cache = list(self.iterator())
-            # TODO: Do we have to test for ValuesListIterable, ValuesIterable,
-            # and FlatValuesListIterable here?
-            if self._iterable_class == ModelIterable:
-                for x in self._result_cache:
-                    self._set_item_querytime(x)
-        if self._prefetch_related_lookups and not self._prefetch_done:
-            self._prefetch_related_objects()
+    # def _fetch_all(self):
+    #     """
+    #     Completely overrides the QuerySet._fetch_all method by adding the
+    #     timestamp to all objects
+    #
+    #     :return: See django.db.models.query.QuerySet._fetch_all for return
+    #         values
+    #     """
+    #     if self._result_cache is None:
+    #         self._result_cache = list(self.iterator())
+    #         # TODO: Do we have to test for ValuesListIterable, ValuesIterable,
+    #         # and FlatValuesListIterable here?
+    #         if self._iterable_class == ModelIterable:
+    #             for x in self._result_cache:
+    #                 self._set_item_querytime(x)
+    #     if self._prefetch_related_lookups and not self._prefetch_done:
+    #         self._prefetch_related_objects()
 
     def _clone(self, *args, **kwargs):
         """
@@ -574,39 +574,39 @@ class VersionedQuerySet(QuerySet):
             original object
         """
         clone = super(VersionedQuerySet, self)._clone(**kwargs)
-        clone.querytime = self.querytime
+        # clone.querytime = self.querytime
         return clone
 
-    def _set_item_querytime(self, item, type_check=True):
-        """
-        Sets the time for which the query was made on the resulting item
+    # def _set_item_querytime(self, item, type_check=True):
+    #     """
+    #     Sets the time for which the query was made on the resulting item
+    #
+    #     :param item: an item of type Versionable
+    #     :param type_check: Check the item to be a Versionable
+    #     :return: Returns the item itself with the time set
+    #     """
+    #     if isinstance(item, Versionable):
+    #         item._querytime = self.querytime
+    #     elif isinstance(item, VersionedQuerySet):
+    #         item.querytime = self.querytime
+    #     else:
+    #         if type_check:
+    #             raise TypeError(
+    #                 "This item is not a Versionable, it's a " + str(type(item)))
+    #     return item
 
-        :param item: an item of type Versionable
-        :param type_check: Check the item to be a Versionable
-        :return: Returns the item itself with the time set
-        """
-        if isinstance(item, Versionable):
-            item._querytime = self.querytime
-        elif isinstance(item, VersionedQuerySet):
-            item.querytime = self.querytime
-        else:
-            if type_check:
-                raise TypeError(
-                    "This item is not a Versionable, it's a " + str(type(item)))
-        return item
-
-    def as_of(self, qtime=None):
-        """
-        Sets the time for which we want to retrieve an object.
-
-        :param qtime: The UTC date and time; if None then use the current
-            state (where version_end_date = NULL)
-        :return: A VersionedQuerySet
-        """
-        # New queryset object is created with querytime object
-        clone = self._clone()
-        clone.querytime = QueryTime(time=qtime, active=False)
-        return clone
+    # def as_of(self, qtime=None):
+    #     """
+    #     Sets the time for which we want to retrieve an object.
+    #
+    #     :param qtime: The UTC date and time; if None then use the current
+    #         state (where version_end_date = NULL)
+    #     :return: A VersionedQuerySet
+    #     """
+    #     # New queryset object is created with querytime object
+    #     clone = self._clone()
+    #     clone.querytime = QueryTime(time=qtime, active=False)
+    #     return clone
 
     def first(self):
         """
@@ -828,7 +828,7 @@ class Versionable(models.Model):
         if uuid_value:
             if not validate_uuid(uuid_value):
                 raise ValueError(
-                    "uuid_value must be a valid UUID version 4 object")
+                    "uuid_value must be a valid UUID version 1 object")
         else:
             uuid_value = uuid.uuid1()
 
@@ -901,6 +901,7 @@ class Versionable(models.Model):
 
         later_version = copy.copy(earlier_version)
         # Contrary to previous implementation we would assign a new UUID to every new versioned object
+        later_version.id = None
         later_version.unique_id = self.uuid()
         later_version.version_end_date = None
         later_version.version_start_date = forced_version_date
@@ -971,7 +972,8 @@ class Versionable(models.Model):
         m2m_rels = list(source.through.objects.filter(
             **{source.source_field.attname: clone.unique_id}))
         later_current = []
-        later_current_end = []
+        # This is no longer needed.
+        # later_current_end = []
         for rel in m2m_rels:
             # Only clone the relationship, if it is the current one
             # Otherwise, the number of pointers pointing an entry will grow
@@ -983,8 +985,8 @@ class Versionable(models.Model):
                         later_current.append(
                             rel.clone(forced_version_date=clone.version_end_date,
                                       in_bulk=True, keep_prev_version=keep_prev_rels))
-                else:
-                    later_current_end.append(rel)
+                # else:
+                #     later_current_end.append(rel)
             else:
                 # If not a versionable object, just recreate the entry and replace the source field attribute with
                 # the new object cloned/created.
@@ -1001,16 +1003,28 @@ class Versionable(models.Model):
         # Deleting previous rows
         if not keep_prev_rels:
             if clone_rels:
-                source.through.objects.filter(
-                   id__in=[r.id for r in m2m_rels
-                     if hasattr(r, '_not_updated') and r._not_updated ]).update(
-                    **{'version_end_date': forced_version_date}
-                )
-            else:
-                source.through.objects.filter(
-                    id__in=[r.id for r in later_current_end]).update(
-                    **{'version_end_date': forced_version_date}
-                )
+                try:
+                    source.through._meta.get_field('version_end_date')
+                except FieldDoesNotExist:
+                    pass
+                else:
+                    source.through.objects.filter(
+                       id__in=[r.id for r in m2m_rels
+                         if hasattr(r, '_not_updated') and r._not_updated ]).update(
+                        **{'version_end_date': forced_version_date}
+                    )
+            # This is commented out because here, the later_current_end will have only those objects which are already
+            # archived.
+            # else:
+            #     try:
+            #         source.through._meta.get_field('version_end_date')
+            #     except FieldDoesNotExist:
+            #         pass
+            #     else:
+            #         source.through.objects.filter(
+            #             id__in=[r.id for r in later_current_end]).update(
+            #             **{'version_end_date': forced_version_date}
+            #         )
 
     def restore(self, **kwargs):
         """
