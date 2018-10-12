@@ -932,7 +932,7 @@ class Versionable(models.Model):
         for field_name in self.get_all_m2m_field_names():
             later_version.clone_relations(earlier_version, field_name,
                                             forced_version_date,
-                                          keep_prev_rels=keep_prev_rels, clone_rels=clone_rels)
+                                          keep_prev_rels=keep_prev_rels, clone_rels=clone_rels, clone_status=clone_status)
 
         return later_version
 
@@ -961,7 +961,7 @@ class Versionable(models.Model):
         self.version_birth_date = self.version_start_date = timestamp
         return self
 
-    def clone_relations(self, clone, manager_field_name, forced_version_date, keep_prev_rels=False, clone_rels=True):
+    def clone_relations(self, clone, manager_field_name, forced_version_date, keep_prev_rels=False, clone_rels=True, clone_status=STATUS_DRAFT):
         # Source: the original object, where relations are currently
         # pointing to
         source = getattr(self,
@@ -983,7 +983,7 @@ class Versionable(models.Model):
                 if rel.is_current:
                     if clone_rels:
                         later_current.append(
-                            rel.clone(forced_version_date=clone.version_end_date,
+                            rel.clone(forced_version_date=clone.version_end_date, clone_status=clone_status,
                                       in_bulk=True, keep_prev_version=keep_prev_rels))
                 # else:
                 #     later_current_end.append(rel)
