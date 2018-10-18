@@ -595,18 +595,18 @@ class VersionedQuerySet(QuerySet):
     #                 "This item is not a Versionable, it's a " + str(type(item)))
     #     return item
 
-    # def as_of(self, qtime=None):
-    #     """
-    #     Sets the time for which we want to retrieve an object.
-    #
-    #     :param qtime: The UTC date and time; if None then use the current
-    #         state (where version_end_date = NULL)
-    #     :return: A VersionedQuerySet
-    #     """
-    #     # New queryset object is created with querytime object
-    #     clone = self._clone()
-    #     clone.querytime = QueryTime(time=qtime, active=False)
-    #     return clone
+    def as_of(self, qtime=None):
+        """
+        Sets the time for which we want to retrieve an object.
+
+        :param qtime: The UTC date and time; if None then use the current
+            state (where version_end_date = NULL)
+        :return: A VersionedQuerySet
+        """
+        # New queryset object is created with querytime object
+        clone = self._clone()
+        clone.querytime = QueryTime(time=qtime, active=False)
+        return clone
 
     def first(self):
         """
