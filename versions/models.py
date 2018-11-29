@@ -716,11 +716,13 @@ class Versionable(models.Model):
     STATUS_DRAFT = 10
     STATUS_PUBLISHED = 20
     STATUS_ARCHIVED = 30
+    STATUS_PROCESSING = 40
     STATUS_CHOICES = (
             (STATUS_INVALID, 'Invalid'),
             (STATUS_DRAFT, 'Draft'),
             (STATUS_PUBLISHED, 'Published'),
             (STATUS_ARCHIVED, 'Archived'),
+            (STATUS_PROCESSING, 'Processing'),
     )
     status = models.PositiveSmallIntegerField(choices=STATUS_CHOICES, default=STATUS_DRAFT,
                                               help_text="Every versionable instance needs to be in some state")
