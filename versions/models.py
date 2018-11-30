@@ -338,7 +338,7 @@ class VersionedQuerySet(QuerySet):
         return None
 
     @transaction.atomic
-    def delete(self):
+    def delete(self, **kwargs):
         """
         Deletes the records in the QuerySet.
         """
@@ -664,7 +664,6 @@ class AllObjectsQuerySet():
     Custom queryset for overriding the update/bulk_create method
     """
 
-
 class AllObjectsManager(manager.BaseManager.from_queryset(models.QuerySet)):
     """
     Object manager to handle custom queryset for all objects
@@ -768,7 +767,7 @@ class Versionable(models.Model):
                 setattr(self, self.OBJECT_IDENTIFIER_FIELD,
                         getattr(self, self.VERSION_IDENTIFIER_FIELD))
 
-    def delete(self, using=None, keep_parents=False):
+    def delete(self, using=None, keep_parents=False, **kwargs):
         # TODO: Fix delete implementation
         using = using or router.db_for_write(self.__class__, instance=self)
         assert self._get_pk_val() is not None, \
@@ -800,15 +799,13 @@ class Versionable(models.Model):
         #         'Cannot delete anything else but the current version')
 
     def permanent_delete(self, *args, **kwargs):
-        """
-        Hard delete an object.
-        """
         super(Versionable, self).delete(*args, **kwargs)
 
     def inactivate(self, *args, **kwargs):
         """
         Mark object as inactive by setting active = False.
         """
+
         self.active = False
         super(Versionable, self).save()
 
@@ -937,7 +934,7 @@ class Versionable(models.Model):
         later_version.unique_id = self.uuid()
         later_version.version_end_date = None
         later_version.version_start_date = forced_version_date
-        keep_prev_rels = keep_prev_version or clone_status == self.STATUS_DRAFT
+        keep_prev_rels = keep_prev_version or clone_status in [self.STATUS_DRAFT, self.STATUS_PROCESSING]
 
         # We would be selectively setting version_end_date for previous versions
         # Since in our case we can multiple active versions
@@ -958,6 +955,8 @@ class Versionable(models.Model):
             later_version.save()
         else:
             earlier_version._not_updated = True
+
+        clone_status = self.STATUS_PUBLISHED if clone_status is self.STATUS_PROCESSING else clone_status
 
         # re-create ManyToMany relations
         # TODO: To overwrite clone_relations in order to work out id join
@@ -1016,7 +1015,8 @@ class Versionable(models.Model):
                     if clone_rels:
                         later_current.append(
                             rel.clone(forced_version_date=clone.version_end_date, clone_status=clone_status,
-                                      in_bulk=True, keep_prev_version=keep_prev_rels))
+                                      in_bulk=True, keep_prev_version=keep_prev_rels)
+                        )
                 # else:
                 #     later_current_end.append(rel)
             else:
