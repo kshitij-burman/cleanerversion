@@ -716,12 +716,14 @@ class Versionable(models.Model):
     STATUS_PUBLISHED = 20
     STATUS_ARCHIVED = 30
     STATUS_PROCESSING = 40
+    STATUS_PENDING_RELEASE = 50
     STATUS_CHOICES = (
             (STATUS_INVALID, 'Invalid'),
             (STATUS_DRAFT, 'Draft'),
             (STATUS_PUBLISHED, 'Published'),
             (STATUS_ARCHIVED, 'Archived'),
             (STATUS_PROCESSING, 'Processing'),
+            (STATUS_PENDING_RELEASE, 'Pending Release'),
     )
     status = models.PositiveSmallIntegerField(choices=STATUS_CHOICES, default=STATUS_DRAFT,
                                               help_text="Every versionable instance needs to be in some state")
@@ -934,7 +936,9 @@ class Versionable(models.Model):
         later_version.unique_id = self.uuid()
         later_version.version_end_date = None
         later_version.version_start_date = forced_version_date
-        keep_prev_rels = keep_prev_version or clone_status in [self.STATUS_DRAFT, self.STATUS_PROCESSING]
+        keep_prev_rels = keep_prev_version or clone_status in [
+            self.STATUS_DRAFT, self.STATUS_PROCESSING, self.STATUS_PENDING_RELEASE
+        ]
 
         # We would be selectively setting version_end_date for previous versions
         # Since in our case we can multiple active versions
@@ -956,7 +960,9 @@ class Versionable(models.Model):
         else:
             earlier_version._not_updated = True
 
-        clone_status = self.STATUS_PUBLISHED if clone_status is self.STATUS_PROCESSING else clone_status
+        clone_status = self.STATUS_PUBLISHED if clone_status in [
+            self.STATUS_PROCESSING, self.STATUS_PENDING_RELEASE
+        ] else clone_status
 
         # re-create ManyToMany relations
         # TODO: To overwrite clone_relations in order to work out id join
