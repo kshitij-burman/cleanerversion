@@ -960,9 +960,9 @@ class Versionable(models.Model):
         else:
             earlier_version._not_updated = True
 
-        clone_status = self.STATUS_PUBLISHED if clone_status in [
-            self.STATUS_PROCESSING, self.STATUS_PENDING_RELEASE
-        ] else clone_status
+        # This is done because currently, we are not using the status of through tables and if we do, we will have to
+        # update them as well when the status of the related objects(FKs) get updated.
+        clone_status = self.STATUS_PUBLISHED
 
         # re-create ManyToMany relations
         # TODO: To overwrite clone_relations in order to work out id join
