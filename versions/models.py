@@ -674,6 +674,7 @@ class Versionable(models.Model):
     """
     This is pretty much the central point for versioning objects.
     """
+    UNCHECKED_FIELDS = ['parent']
     VERSION_IDENTIFIER_FIELD = 'unique_id'
     OBJECT_IDENTIFIER_FIELD = 'identity'
     VERSIONABLE_FIELDS = [VERSION_IDENTIFIER_FIELD, OBJECT_IDENTIFIER_FIELD,
@@ -733,6 +734,7 @@ class Versionable(models.Model):
 
     status = models.PositiveSmallIntegerField(choices=STATUS_CHOICES, default=STATUS_DRAFT,
                                               help_text="Every versionable instance needs to be in some state")
+    parent = models.ForeignKey('self', null=True, blank=True, help_text='Link to the parent version', on_delete=models.SET_NULL, to_field='unique_id')
     """
     This field represent current state of this instance.
     Status of an instance can be changed without having a new version.
@@ -973,9 +975,10 @@ class Versionable(models.Model):
         # re-create ManyToMany relations
         # TODO: To overwrite clone_relations in order to work out id join
         for field_name in self.get_all_m2m_field_names():
-            later_version.clone_relations(earlier_version, field_name,
-                                            forced_version_date,
-                                          keep_prev_rels=keep_prev_rels, clone_rels=clone_rels, clone_status=clone_status)
+            if clone_rels:
+                later_version.clone_relations(earlier_version, field_name,
+                                                forced_version_date,
+                                              keep_prev_rels=keep_prev_rels, clone_rels=clone_rels, clone_status=clone_status)
 
         return later_version
 
@@ -1025,10 +1028,10 @@ class Versionable(models.Model):
                 # Check if it is a versionable object. If it is, clone it.
                 if rel.is_current:
                     if clone_rels:
-                        later_current.append(
-                            rel.clone(forced_version_date=clone.version_end_date, clone_status=clone_status,
+                        cloned_relation = rel.clone(forced_version_date=clone.version_end_date, clone_status=clone_status,
                                       in_bulk=True, keep_prev_version=keep_prev_rels)
-                        )
+                        cloned_relation.parent = rel
+                        later_current.append(cloned_relation)
                 # else:
                 #     later_current_end.append(rel)
             else:
@@ -1043,6 +1046,13 @@ class Versionable(models.Model):
         if clone_rels:
             [setattr(rel, source.source_field_name, self) for rel in later_current]
             source.through.objects.bulk_create(later_current)
+            new_objects = source.through.objects.filter(**{source.source_field.attname: self.unique_id})
+            for new_object in new_objects:
+                for field_name in new_object.get_all_m2m_field_names():
+                    new_object.clone_relations(
+                        new_object.parent, field_name, forced_version_date=clone.version_end_date,
+                        clone_status=clone_status, keep_prev_rels=keep_prev_rels
+                    )
 
         # Deleting previous rows
         if not keep_prev_rels:
