@@ -1048,7 +1048,7 @@ class Versionable(models.Model):
             source.through.objects.bulk_create(later_current)
             new_objects = source.through.objects.filter(**{source.source_field.attname: self.unique_id})
             for new_object in new_objects:
-                if hasattr(rel, 'is_current') and rel.is_current:
+                if hasattr(new_object, 'is_current') and new_object.is_current:
                     for field_name in new_object.get_all_m2m_field_names():
                         new_object.clone_relations(
                             new_object.parent, field_name, forced_version_date=clone.version_end_date,
