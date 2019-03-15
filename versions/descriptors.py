@@ -230,7 +230,15 @@ class VersionedReverseManyToOneDescriptor(ReverseManyToOneDescriptor):
                 instance_attr = rel_field.get_foreign_related_value
                 # Use identities instead of ids so that this will work with
                 # versioned objects.
-                instances_dict = {(inst.id,): inst for inst in instances}
+
+                # Get to_field of the relation
+                if rel_field.to_fields is not None and len(rel_field.to_fields) > 0:
+                    to_field = rel_field.to_fields[0]
+                else:
+                    to_field = 'pk'
+
+                # Create dictionary on the to_field
+                instances_dict = {(getattr(inst, to_field),): inst for inst in instances}
                 obj_ids = [inst.id for inst in instances]
                 query = {'%s__id__in' % rel_field.name: obj_ids}
                 queryset = queryset.filter(**query)
